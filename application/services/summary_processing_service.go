@@ -50,15 +50,31 @@ func calculateSummary(transactions []model.Transaction) (string, error) {
 		}
 	}
 
-	summary := fmt.Sprintf("Total balance is %.2f\n", totalBalance)
-	summary += fmt.Sprintf("Average credit amount: %.2f\n", creditSum/float64(creditCount))
-	summary += fmt.Sprintf("Average debit amount: %.2f\n", debitSum/float64(debitCount))
-
+	emailBody := `
+        <html>
+            <head></head>
+            <body>
+                <h1>Transaction Summary</h1>
+                <p>Total balance is %.2f</p>
+                <p>Average credit amount: %.2f</p>
+                <p>Average debit amount: %.2f</p>
+	`
 	for month, count := range transactionByMonth {
-		summary += fmt.Sprintf("Number of transactions in %s: %d\n", month, count)
+		emailBody += fmt.Sprintf("<p>Number of transactions in %s: %d</p>", month, count)
 	}
 
-	return summary, nil
+	emailBody += `<footer>
+					<p>Stori Company</p>
+					<img src="https://stori-resources.s3.amazonaws.com/stori_logo.png" alt="Company Logo" width="150" height="50">
+				</footer>
+            </body>
+        </html>
+    `
+	emailBody = fmt.Sprintf(emailBody, totalBalance, creditSum/float64(creditCount), debitSum/float64(debitCount))
+
+	fmt.Println(emailBody)
+
+	return emailBody, nil
 }
 
 func NewSummaryProcessingService(emailSender notifications.IEmailSender) *SummaryProcessingService {

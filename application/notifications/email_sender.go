@@ -20,7 +20,7 @@ func (d *EmailSender) SendSummaryEmail(summary string) error {
 		},
 		Message: &ses.Message{
 			Body: &ses.Body{
-				Text: &ses.Content{
+				Html: &ses.Content{
 					Data: aws.String(summary),
 				},
 			},
@@ -28,7 +28,7 @@ func (d *EmailSender) SendSummaryEmail(summary string) error {
 				Data: aws.String("Transaction Summary"),
 			},
 		},
-		Source: aws.String(d.envVariables.DestinationEmail),
+		Source: aws.String(d.envVariables.SourceEmail),
 	})
 
 	return err

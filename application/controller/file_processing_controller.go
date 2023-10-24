@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
@@ -10,11 +11,11 @@ import (
 	"github.com/javierBros/backend-balance/application"
 	"github.com/javierBros/backend-balance/application/model"
 	"github.com/javierBros/backend-balance/application/services"
+	"github.com/javierBros/backend-balance/application/utils"
 	"io"
 	"log"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type FileProcessingController struct {
@@ -27,22 +28,33 @@ type FileProcessingController struct {
 func processCSV(data []byte) ([]model.Transaction, error) {
 	reader := csv.NewReader(strings.NewReader(string(data)))
 	transactions := []model.Transaction{}
+	countIteration := 0
 
 	for {
 		record, err := reader.Read()
-		if err != nil {
-			fmt.Printf(`err line csv: %v\n`, err.Error())
+		countIteration++
+		if countIteration == 1 {
+			continue
+		}
+		if err == io.EOF {
 			break
 		}
-		fmt.Printf(`record: %v\n`, record)
-
-		if len(record) != 3 {
-			continue // Skip invalid rows
+		if err != nil {
+			fmt.Printf(`err line csv: %v\n`, err.Error())
+			return nil, err
 		}
 
-		date, _ := time.Parse(application.DateFormatMMdd, record[1])
+		date, err := utils.ConvertMMddStringDateToDate(record[1])
+		if err != nil {
+			fmt.Printf(`error line csv: Error reading date field.  record[1]->%v, err->%v\n`, record[1], err.Error())
+			return nil, errors.New(`error line csv: Error reading date field`)
+		}
 
-		amount, _ := strconv.ParseFloat(strings.TrimPrefix(record[2], "+"), 64)
+		amount, err := strconv.ParseFloat(strings.TrimPrefix(record[2], "+"), 64)
+		if err != nil {
+			fmt.Printf(`error line csv: Error reading amount field:  record[2]->%v, err->%v\n`, record[2], err.Error())
+			return nil, errors.New(`error line csv: Error reading amount field`)
+		}
 
 		transaction := model.Transaction{
 			Date:     date,
@@ -80,32 +92,23 @@ func downloadFile(sess *session.Session, bucket, key string) ([]byte, error) {
 	return data, nil
 }
 
-func downloadAndProcessFile(event events.S3Event, sess *session.Session) ([]model.Transaction, error) {
+func (d *FileProcessingController) ProcessBalance() error {
 
-	s3Record := event.Records[0].S3
+	s3Record := d.event.Records[0].S3
 	bucket := s3Record.Bucket.Name
 	key := s3Record.Object.Key
 
 	fmt.Printf(`Bucket: %v, Key: %v\n`, bucket, key)
 
-	data, err := downloadFile(sess, bucket, key)
+	data, err := downloadFile(d.session, bucket, key)
 	if err != nil {
 		log.Println("Error downloading file from S3:", err)
-		return nil, err
+		return err
 	}
 
 	transactions, err := processCSV(data)
 	if err != nil {
 		log.Println("Error processiyng CSV:", err)
-		return nil, err
-	}
-
-	return transactions, nil
-}
-
-func (d *FileProcessingController) DownloadAndProcessFile() error {
-	transactions, err := downloadAndProcessFile(d.event, d.session)
-	if err != nil {
 		return err
 	}
 
