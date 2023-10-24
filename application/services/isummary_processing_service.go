@@ -1,5 +1,7 @@
 package services
 
+import "github.com/javierBros/backend-balance/application/model"
+
 type ISummaryProcessingService interface {
-	ProcessSummary() error
+	ProcessSummary(transactions []model.Transaction) error
 }

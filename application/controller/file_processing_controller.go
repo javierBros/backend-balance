@@ -1,19 +1,30 @@
-package main
+package controller
 
 import (
-	"context"
+	"encoding/csv"
 	"fmt"
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/javierBros/backend-balance/application"
-	"github.com/javierBros/backend-balance/application/config"
+	"github.com/javierBros/backend-balance/application/model"
+	"github.com/javierBros/backend-balance/application/services"
+	"io"
+	"log"
+	"strconv"
+	"strings"
+	"time"
 )
 
-var envVariables *application.EnvironmentVariables
+type FileProcessingController struct {
+	summaryProcessingService services.ISummaryProcessingService
+	envVariables             *application.EnvironmentVariables
+	event                    events.S3Event
+	session                  *session.Session
+}
 
-/*func processCSV(data []byte) ([]model.Transaction, error) {
+func processCSV(data []byte) ([]model.Transaction, error) {
 	reader := csv.NewReader(strings.NewReader(string(data)))
 	transactions := []model.Transaction{}
 
@@ -29,7 +40,7 @@ var envVariables *application.EnvironmentVariables
 			continue // Skip invalid rows
 		}
 
-		date, _ := time.Parse(constants.DateFormatMMdd, record[1])
+		date, _ := time.Parse(application.DateFormatMMdd, record[1])
 
 		amount, _ := strconv.ParseFloat(strings.TrimPrefix(record[2], "+"), 64)
 
@@ -90,37 +101,30 @@ func downloadAndProcessFile(event events.S3Event, sess *session.Session) ([]mode
 	}
 
 	return transactions, nil
-}*/
+}
 
-func ProcessEvent(ctx context.Context, event events.S3Event) error {
-
-	envVariables = application.NewEnvironmentVariables()
-
-	fmt.Printf(`S3 event: %v`, event)
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(envVariables.SESRegion),
-	})
-	if err != nil {
-		fmt.Printf(`Error reading session: %v`, err.Error())
-		return err
-	}
-
-	fileProcessingController := config.ChargeDependencies(event, sess, envVariables)
-	err = fileProcessingController.DownloadAndProcessFile()
+func (d *FileProcessingController) DownloadAndProcessFile() error {
+	transactions, err := downloadAndProcessFile(d.event, d.session)
 	if err != nil {
 		return err
 	}
-	/*
-		fileProcessingController := config.ChargeDependencies(sess, envVariables)
 
-		err = fileProcessingController.DownloadAndProcessFile()
-		if err != nil {
-			return err
-		}*/
+	err = d.summaryProcessingService.ProcessSummary(transactions)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func main() {
-	lambda.Start(ProcessEvent)
+func NewFileProcessingController(summaryProcessingService services.ISummaryProcessingService,
+	envVariables *application.EnvironmentVariables,
+	event events.S3Event,
+	session *session.Session) *FileProcessingController {
+	return &FileProcessingController{
+		summaryProcessingService: summaryProcessingService,
+		envVariables:             envVariables,
+		event:                    event,
+		session:                  session,
+	}
 }
